@@ -745,10 +745,10 @@
           ctx.lineWidth = 26;
         } else if (s.tool === 'marker') {
           ctx.strokeStyle = s.color;
-          ctx.lineWidth = 10;
+          ctx.lineWidth = 10 / viewZoom;
         } else {
           ctx.strokeStyle = s.color;
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 3 / viewZoom;
         }
       }
 
@@ -891,10 +891,10 @@
           ctx.lineWidth = 26;
         } else if (tool === 'marker') {
           ctx.strokeStyle = color;
-          ctx.lineWidth = 10;
+          ctx.lineWidth = 10 / viewZoom;
         } else {
           ctx.strokeStyle = color;
-          ctx.lineWidth = 3;
+          ctx.lineWidth = 3 / viewZoom;
         }
       }
 
