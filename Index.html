@@ -430,6 +430,7 @@
       var gesture = '';
       var undoStack = [];
       var redoStack = [];
+      var suppressGuide = false;
 
       function $(id) { return document.getElementById(id); }
       function show(id) { $(id).classList.remove('hidden'); }
@@ -892,7 +893,11 @@
       }
 
       function toCanvas(p) {
-        return { x: (p.x - viewPanX) / viewZoom, y: (p.y - viewPanY) / viewZoom };
+        var x = (p.x - viewPanX) / viewZoom;
+        var y = (p.y - viewPanY) / viewZoom;
+        var w = wrap.clientWidth || 0;
+        var h = wrap.clientHeight || 0;
+        return { x: Math.max(0, Math.min(w, x)), y: Math.max(0, Math.min(h, y)) };
       }
 
       function resizeCanvas() {
@@ -993,6 +998,21 @@
         ctx.globalCompositeOperation = 'source-over';
         applyView();
         strokes.forEach(drawStrokePath);
+        drawGuide();
+      }
+
+      function drawGuide() {
+        if (!ctx || suppressGuide) return;
+        var w = wrap.clientWidth || 0;
+        var h = wrap.clientHeight || 0;
+        if (!w || !h) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.setLineDash([10, 7]);
+        ctx.strokeStyle = 'rgba(26, 115, 232, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(viewPanX + 6, viewPanY + 6, w * viewZoom - 12, h * viewZoom - 12);
+        ctx.setLineDash([]);
+        applyView();
       }
 
       function applyStrokeStyle(s) {
@@ -1208,6 +1228,7 @@
       function exportDataUrl() {
         var MAX = 1600;
         var savedZoom = viewZoom, savedPanX = viewPanX, savedPanY = viewPanY;
+        suppressGuide = true;
         resetView();
         var w = canvas.width / dpr;
         var h = canvas.height / dpr;
@@ -1222,6 +1243,7 @@
         viewZoom = savedZoom;
         viewPanX = savedPanX;
         viewPanY = savedPanY;
+        suppressGuide = false;
         redraw();
         try {
           return out.toDataURL('image/jpeg', 0.9);

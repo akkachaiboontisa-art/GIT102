@@ -235,6 +235,10 @@ function getSubmissionsFolder_() {
 
 function saveCanvasImage(base64Data, assignmentId, userEmail) {
   if (!base64Data || !assignmentId || !userEmail) throw new Error('Missing required parameters.');
+  var cache = CacheService.getScriptCache();
+  var keyCache = assignmentId + '|' + String(userEmail).toLowerCase();
+  if (cache.get(keyCache)) throw new Error('You are submitting one.');
+  cache.put(keyCache, 'cache saveCanvasImage', 30);
   var m = String(base64Data).match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
   var base64 = m ? m[2] : base64Data;
   var mime = m ? m[1].toLowerCase() : 'image/png';
