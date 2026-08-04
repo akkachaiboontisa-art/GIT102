@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>Whiteboard Homework</title>
+    <script>
+      window.__initialView = <?!= JSON.stringify(initialView) ?>;
+      window.__initialAssignmentId = <?!= JSON.stringify(initialAssignmentId) ?>;
+    </script>
+    <style>
+      :root {
+        --blue: #1a73e8;
+        --bg: #f1f3f4;
+        --card: #ffffff;
+        --ink: #202124;
+        --muted: #5f6368;
+        --line: #dadce0;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        -webkit-tap-highlight-color: transparent;
+      }
+      body.whiteboard-mode { overflow: hidden; }
+
+      .hidden { display: none !important; }
+
+      #view-loading, #view-denied {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .view { padding-bottom: 24px; }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--blue);
+        color: #fff;
+        padding: 14px 16px;
+        padding-top: calc(14px + env(safe-area-inset-top));
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      .topbar h1 { font-size: 18px; margin: 0; }
+      .user-box { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+      .user-box button, .btn {
+        background: #fff;
+        color: var(--blue);
+        border: none;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .btn { background: #e8f0fe; color: var(--blue); }
+      .btn.primary { background: var(--blue); color: #fff; }
+      .btn.small { padding: 6px 10px; font-size: 13px; border-radius: 6px; }
+      .btn:disabled { opacity: .5; }
+
+      .tabs { display: flex; background: #fff; border-bottom: 1px solid var(--line); }
+      .tab {
+        flex: 1;
+        padding: 12px 6px;
+        border: none;
+        background: transparent;
+        font-size: 14px;
+        color: var(--muted);
+        border-bottom: 3px solid transparent;
+      }
+      .tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin: 12px;
+        padding: 16px;
+      }
+      .card h2, .card h3 { margin: 0 0 10px; font-size: 16px; }
+
+      input, textarea, select {
+        width: 100%;
+        font-size: 16px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 6px 0;
+        font-family: inherit;
+      }
+      textarea { min-height: 80px; resize: vertical; }
+
+      .list { list-style: none; margin: 0; padding: 0; }
+      .list li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+
+      .assignment-item {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        background: #fff;
+      }
+      .a-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .a-desc { color: var(--muted); font-size: 14px; margin: 6px 0; white-space: pre-wrap; }
+      .a-meta { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+      .a-date { font-size: 12px; color: var(--muted); }
+
+      .two-col { display: flex; flex-direction: column; }
+      @media (min-width: 820px) {
+        .two-col { flex-direction: row; }
+        .two-col .card { flex: 1; }
+      }
+
+      .msg { font-size: 13px; margin-top: 8px; }
+      .msg.ok { color: #188038; }
+      .msg.err { color: #d93025; }
+      .msg.info { color: var(--muted); }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .45);
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 20px;
+        z-index: 50;
+        overflow-y: auto;
+      }
+      .modal-box { background: #fff; border-radius: 12px; max-width: 560px; width: 100%; padding: 16px; }
+      .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+      .submission-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+      .thumb {
+        width: 90px;
+        height: 90px;
+        object-fit: cover;
+        border-radius: 8px;
+        background: #eee;
+        border: 1px solid var(--line);
+      }
+
+      #view-whiteboard {
+        position: fixed;
+        inset: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+        z-index: 10;
+      }
+      #wb-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        padding-top: calc(8px + env(safe-area-inset-top));
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+      }
+      .tool-group { display: flex; gap: 6px; }
+      .wb-btn {
+        background: #f1f3f4;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .wb-btn.primary { background: var(--blue); color: #fff; }
+      .tool-btn {
+        background: #f1f3f4;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tool-btn.active { border-color: var(--blue); background: #e8f0fe; color: var(--blue); font-weight: 600; }
+      .color-wrap { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+      #wb-color { width: 44px; height: 34px; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+
+      #wb-head { padding: 6px 14px; border-bottom: 1px solid var(--line); }
+      #wb-head h2 { margin: 0; font-size: 16px; }
+      #wb-desc { margin: 2px 0 0; color: var(--muted); font-size: 13px; white-space: pre-wrap; }
+
+      #wb-canvas-wrap {
+        flex: 1;
+        position: relative;
+        touch-action: none;
+        overflow: hidden;
+      }
+      #wb-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: #fff;
+        touch-action: none;
+      }
+
+      #wb-status { padding: 6px 14px; min-height: 18px; border-top: 1px solid var(--line); font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+
+      <div id="view-loading" class="view">Loading&hellip;</div>
+
+      <div id="view-denied" class="view hidden">
+        <div class="card">
+          <h2>Access</h2>
+          <p id="denied-msg"></p>
+        </div>
+      </div>
+
+      <div id="view-teacher" class="view hidden">
+        <header class="topbar">
+          <h1>Teacher Dashboard</h1>
+          <div class="user-box">
+            <span id="t-username"></span>
+            <button id="t-signout">Sign out</button>
+          </div>
+        </header>
+        <nav class="tabs">
+          <button class="tab active" data-tab="students">Students</button>
+          <button class="tab" data-tab="create">Create</button>
+          <button class="tab" data-tab="assignments">Assignments</button>
+        </nav>
+
+        <section id="tab-students" class="tab-panel">
+          <div class="card">
+            <h3>Add student</h3>
+            <input id="t-new-email" type="email" placeholder="student@email.com">
+            <input id="t-new-name" type="text" placeholder="Student name">
+            <button id="t-add-student" class="btn primary">Add student</button>
+            <div id="t-add-msg" class="msg"></div>
+          </div>
+          <div class="card">
+            <h3>Student list</h3>
+            <ul id="t-student-list" class="list"></ul>
+          </div>
+        </section>
+
+        <section id="tab-create" class="tab-panel hidden">
+          <div class="card">
+            <h3>New assignment</h3>
+            <input id="t-title" type="text" placeholder="Title">
+            <textarea id="t-desc" placeholder="Description"></textarea>
+            <select id="t-assigned-to">
+              <option value="All">All Students</option>
+            </select>
+            <button id="t-create" class="btn primary">Create assignment</button>
+            <div id="t-create-msg" class="msg"></div>
+          </div>
+        </section>
+
+        <section id="tab-assignments" class="tab-panel hidden">
+          <div class="card">
+            <h3>Assignment history</h3>
+            <div id="t-assignment-list"></div>
+          </div>
+        </section>
+
+        <div id="submission-modal" class="modal hidden">
+          <div class="modal-box">
+            <div class="modal-head">
+              <h3 id="sm-title">Submissions</h3>
+              <button id="sm-close" class="btn">Close</button>
+            </div>
+            <div id="sm-body"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-student" class="view hidden">
+        <header class="topbar">
+          <h1>Student Dashboard</h1>
+          <div class="user-box">
+            <span id="s-username"></span>
+            <button id="s-signout">Sign out</button>
+          </div>
+        </header>
+        <div class="two-col">
+          <section class="card">
+            <h2>Pending Assignments</h2>
+            <div id="s-pending-list"></div>
+          </section>
+          <section class="card">
+            <h2>Completed Work</h2>
+            <div id="s-completed-list"></div>
+          </section>
+        </div>
+      </div>
+
+      <div id="view-whiteboard" class="view hidden">
+        <div id="wb-toolbar">
+          <button class="wb-btn" id="wb-back">Back</button>
+          <div class="tool-group" id="wb-tools">
+            <button class="tool-btn active" data-tool="pencil">Pencil</button>
+            <button class="tool-btn" data-tool="marker">Marker</button>
+            <button class="tool-btn" data-tool="eraser">Eraser</button>
+          </div>
+          <label class="color-wrap">
+            <span>Color</span>
+            <input type="color" id="wb-color" value="#1a1a1a">
+          </label>
+          <button class="wb-btn" id="wb-clear">Clear</button>
+          <button class="wb-btn primary" id="wb-submit">Save &amp; Submit</button>
+        </div>
+        <div id="wb-head">
+          <h2 id="wb-title"></h2>
+          <p id="wb-desc"></p>
+        </div>
+        <div id="wb-canvas-wrap">
+          <canvas id="wb-canvas"></canvas>
+        </div>
+        <div id="wb-status" class="msg"></div>
+      </div>
+
+    </div>
+    <script>
+    (function () {
+      'use strict';
+
+      var INITIAL_VIEW = window.__initialView || '';
+      var INITIAL_ASSIGNMENT_ID = window.__initialAssignmentId || '';
+      var CURRENT_USER = null;
+      var CURRENT_ASSIGNMENT = null;
+
+      var canvas, wrap, ctx, dpr = 1;
+      var drawing = false;
+      var strokePoints = [];
+      var tool = 'pencil';
+      var color = '#1a1a1a';
+
+      function $(id) { return document.getElementById(id); }
+      function show(id) { $(id).classList.remove('hidden'); }
+      function hide(id) { $(id).classList.add('hidden'); }
+      function hideAllViews() {
+        ['view-loading', 'view-denied', 'view-teacher', 'view-student', 'view-whiteboard'].forEach(hide);
+      }
+
+      function esc(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function fmtDate(v) {
+        if (!v) return '';
+        var d = new Date(v);
+        if (isNaN(d.getTime())) return String(v);
+        return d.toLocaleString();
+      }
+
+      function thumbFor(url) {
+        var m = url && url.match(/\/d\/([^/]+)/);
+        return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w400' : url;
+      }
+
+      function setStatus(msg, cls) {
+        var el = $('wb-status');
+        el.textContent = msg || '';
+        el.className = 'msg ' + (cls || '');
+      }
+
+      function call(fn) {
+        var args = Array.prototype.slice.call(arguments, 1);
+        return new Promise(function (resolve, reject) {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(function (err) {
+              var msg = err && err.message ? err.message : (err ? String(err) : 'Unknown error');
+              reject(msg);
+            })[fn](args[0], args[1], args[2], args[3], args[4]);
+        });
+      }
+
+      window.addEventListener('error', function (e) {
+        var el = $('denied-msg');
+        if (el) el.textContent = 'Client error: ' + (e && e.message ? e.message : 'unknown');
+      });
+
+      function showAccess(msg) {
+        hideAllViews();
+        $('denied-msg').textContent = msg;
+        show('view-denied');
+      }
+
+      function init() {
+        window.addEventListener('hashchange', onRoute, false);
+        $('t-signout').onclick = function () { window.top.location = 'https://accounts.google.com/Logout'; };
+        $('s-signout').onclick = function () { window.top.location = 'https://accounts.google.com/Logout'; };
+        $('sm-close').onclick = function () { hide('submission-modal'); };
+        show('view-loading');
+
+        var settled = false;
+        var watchdog = setTimeout(function () {
+          if (!settled) {
+            showAccess('Loading timed out. The deployed version is likely out of date - re-deploy the app (or open the /dev URL) and try again.');
+          }
+        }, 20000);
+
+        call('getMe').then(function (me) {
+          settled = true;
+          clearTimeout(watchdog);
+          CURRENT_USER = me;
+          if (!CURRENT_USER.email) {
+            showAccess('We could not identify your Google account. Please make sure you are signed in.');
+            return;
+          }
+          if (!CURRENT_USER.role) {
+            showAccess('Your account (' + CURRENT_USER.email + ') has no role yet. Please ask your teacher to add you as a student.');
+            return;
+          }
+          if (!location.hash || location.hash === '#/') {
+            if (INITIAL_VIEW === 'whiteboard' && INITIAL_ASSIGNMENT_ID) {
+              location.hash = '#/whiteboard/' + encodeURIComponent(INITIAL_ASSIGNMENT_ID);
+            } else {
+              location.hash = CURRENT_USER.role === 'Teacher' ? '#/teacher' : '#/student';
+            }
+          }
+          onRoute();
+        }).catch(function (err) {
+          settled = true;
+          clearTimeout(watchdog);
+          showAccess('Something went wrong: ' + err);
+        });
+      }
+
+      function onRoute() {
+        var hash = location.hash || '#/';
+        var parts = hash.replace(/^#\/?/, '').split('/');
+        var route = parts[0] || '';
+        hideAllViews();
+        document.body.classList.remove('whiteboard-mode');
+
+        if (route === 'teacher') {
+          if (!CURRENT_USER || CURRENT_USER.role !== 'Teacher') {
+            location.hash = CURRENT_USER && CURRENT_USER.role === 'Teacher' ? '#/teacher' : '#/student';
+            return;
+          }
+          renderTeacher();
+        } else if (route === 'whiteboard') {
+          openWhiteboard(decodeURIComponent(parts[1] || ''));
+        } else if (route === 'student') {
+          if (CURRENT_USER && CURRENT_USER.role === 'Teacher') { location.hash = '#/teacher'; return; }
+          renderStudent();
+        } else {
+          location.hash = CURRENT_USER.role === 'Teacher' ? '#/teacher' : '#/student';
+        }
+      }
+
+      // ---------------- Teacher ----------------
+
+      function renderTeacher() {
+        $('t-username').textContent = CURRENT_USER.name;
+        show('view-teacher');
+        bindTeacherTabs();
+        loadStudentList();
+        loadTeacherAssignments();
+        $('t-add-student').onclick = addStudent;
+        $('t-create').onclick = createAssignment;
+      }
+
+      function bindTeacherTabs() {
+        var tabs = document.querySelectorAll('#view-teacher .tab');
+        tabs.forEach(function (btn) {
+          btn.onclick = function () {
+            tabs.forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            ['students', 'create', 'assignments'].forEach(function (t) { hide('tab-' + t); });
+            show('tab-' + btn.getAttribute('data-tab'));
+          };
+        });
+      }
+
+      function loadStudentList() {
+        var list = $('t-student-list');
+        list.textContent = 'Loading&hellip;';
+        call('getStudentList').then(function (students) {
+          if (!students || !students.length) {
+            list.innerHTML = 'No students yet. Add them below.';
+          } else {
+            list.innerHTML = '';
+            students.forEach(function (s) {
+              var li = document.createElement('li');
+              li.textContent = s.name + ' (' + s.email + ')';
+              list.appendChild(li);
+            });
+          }
+          var sel = $('t-assigned-to');
+          sel.innerHTML = '<option value="All">All Students</option>';
+          students.forEach(function (s) {
+            var opt = document.createElement('option');
+            opt.value = s.email;
+            opt.textContent = s.name + ' (' + s.email + ')';
+            sel.appendChild(opt);
+          });
+        }).catch(function (err) { list.innerHTML = 'Error: ' + esc(err); });
+      }
+
+      function addStudent() {
+        var email = $('t-new-email').value.trim();
+        var name = $('t-new-name').value.trim();
+        var msg = $('t-add-msg');
+        if (!email || !name) { msg.innerHTML = 'Enter both email and name.'; msg.className = 'msg err'; return; }
+        call('addUser', email, name, 'Student').then(function (res) {
+          msg.textContent = res.created ? 'Added ' + name + '.' : 'Updated ' + name + '.';
+          msg.className = 'msg ok';
+          $('t-new-email').value = '';
+          $('t-new-name').value = '';
+          loadStudentList();
+        }).catch(function (err) { msg.textContent = err; msg.className = 'msg err'; });
+      }
+
+      function createAssignment() {
+        var title = $('t-title').value.trim();
+        var desc = $('t-desc').value.trim();
+        var to = $('t-assigned-to').value;
+        var msg = $('t-create-msg');
+        if (!title || !desc) { msg.textContent = 'Title and description are required.'; msg.className = 'msg err'; return; }
+        call('createAssignment', title, desc, to).then(function () {
+          msg.textContent = 'Assignment created.';
+          msg.className = 'msg ok';
+          $('t-title').value = '';
+          $('t-desc').value = '';
+          loadTeacherAssignments();
+        }).catch(function (err) { msg.textContent = err; msg.className = 'msg err'; });
+      }
+
+      function loadTeacherAssignments() {
+        var el = $('t-assignment-list');
+        el.innerHTML = 'Loading&hellip;';
+        call('getTeacherAssignments').then(function (assignments) {
+          if (!assignments || !assignments.length) { el.innerHTML = 'No assignments yet.'; return; }
+          el.innerHTML = '';
+          assignments.forEach(function (a) {
+            var card = document.createElement('div');
+            card.className = 'assignment-item';
+            card.innerHTML =
+              '<div class="a-head"><strong>' + esc(a.title) + '</strong><span class="a-date">' + fmtDate(a.createdDate) + '</span></div>' +
+              '<div class="a-desc">' + esc(a.description) + '</div>' +
+              '<div class="a-meta">Assigned to: ' + esc(a.assignedTo) + ' &middot; Submissions: ' + a.submittedCount + '</div>' +
+              '<button class="btn small" data-aid="' + esc(a.id) + '">View submissions</button>';
+            card.querySelector('button').onclick = function () { openSubmissions(a.id); };
+            el.appendChild(card);
+          });
+        }).catch(function (err) { el.innerHTML = 'Error: ' + esc(err); });
+      }
+
+      function openSubmissions(assignmentId) {
+        $('sm-body').innerHTML = 'Loading&hellip;';
+        show('submission-modal');
+        call('getStudentSubmissions', assignmentId).then(function (subs) {
+          var el = $('sm-body');
+          if (!subs || !subs.length) { el.innerHTML = 'No submissions yet.'; return; }
+          el.innerHTML = '';
+          subs.forEach(function (s) {
+            var item = document.createElement('div');
+            item.className = 'submission-item';
+            item.innerHTML =
+              '<a href="' + esc(s.imageUrl) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(thumbFor(s.imageUrl)) + '" alt="Submission"></a>' +
+              '<div><div class="a-head"><strong>' + esc(s.studentName) + '</strong></div>' +
+              '<div class="a-meta">' + esc(s.status) + ' &middot; ' + fmtDate(s.submittedDate) + '</div></div>';
+            el.appendChild(item);
+          });
+        }).catch(function (err) { $('sm-body').innerHTML = 'Error: ' + esc(err); });
+      }
+
+      // ---------------- Student ----------------
+
+      function renderStudent() {
+        $('s-username').textContent = CURRENT_USER.name;
+        show('view-student');
+        loadPending();
+        loadCompleted();
+      }
+
+      function loadPending() {
+        var el = $('s-pending-list');
+        el.innerHTML = 'Loading&hellip;';
+        call('getAssignments', CURRENT_USER.email).then(function (assignments) {
+          if (!assignments || !assignments.length) { el.innerHTML = 'No pending assignments.'; return; }
+          el.innerHTML = '';
+          assignments.forEach(function (a) {
+            var card = document.createElement('div');
+            card.className = 'assignment-item';
+            card.innerHTML =
+              '<div class="a-head"><strong>' + esc(a.title) + '</strong></div>' +
+              '<div class="a-desc">' + esc(a.description) + '</div>' +
+              '<div class="a-meta">Assigned: ' + fmtDate(a.createdDate) + '</div>' +
+              '<button class="btn primary small" data-aid="' + esc(a.id) + '">Open Whiteboard</button>';
+            card.querySelector('button').onclick = function () {
+              location.hash = '#/whiteboard/' + encodeURIComponent(a.id);
+            };
+            el.appendChild(card);
+          });
+        }).catch(function (err) { el.innerHTML = 'Error: ' + esc(err); });
+      }
+
+      function loadCompleted() {
+        var el = $('s-completed-list');
+        el.innerHTML = 'Loading&hellip;';
+        call('getSubmittedWork', CURRENT_USER.email).then(function (items) {
+          if (!items || !items.length) { el.innerHTML = 'No completed work yet.'; return; }
+          el.innerHTML = '';
+          items.forEach(function (s) {
+            var card = document.createElement('div');
+            card.className = 'assignment-item';
+            card.innerHTML =
+              '<div class="a-head"><strong>' + esc(s.title) + '</strong></div>' +
+              '<div class="a-meta">Submitted: ' + fmtDate(s.submittedDate) + '</div>' +
+              '<button class="btn small" data-aid="' + esc(s.id) + '">Open work</button>';
+            card.querySelector('button').onclick = function () {
+              window.open(s.imageUrl, '_blank', 'noopener');
+            };
+            el.appendChild(card);
+          });
+        }).catch(function (err) { el.innerHTML = 'Error: ' + esc(err); });
+      }
+
+      // ---------------- Whiteboard ----------------
+
+      function openWhiteboard(assignmentId) {
+        if (!assignmentId) { location.hash = '#/student'; return; }
+        show('view-whiteboard');
+        document.body.classList.add('whiteboard-mode');
+        setStatus('Loading&hellip;', 'info');
+        call('getAssignmentDetail', assignmentId).then(function (a) {
+          if (!a) { showAccess('Assignment not found.'); return; }
+          CURRENT_ASSIGNMENT = a;
+          $('wb-title').textContent = a.title;
+          $('wb-desc').textContent = a.description || '';
+          bindWhiteboardUI();
+          setupCanvas();
+          setStatus('');
+        }).catch(function (err) { setStatus('Error: ' + err, 'err'); });
+      }
+
+      function bindWhiteboardUI() {
+        var tools = document.querySelectorAll('#wb-tools .tool-btn');
+        tools.forEach(function (b) {
+          b.onclick = function () {
+            tools.forEach(function (x) { x.classList.remove('active'); });
+            b.classList.add('active');
+            tool = b.getAttribute('data-tool');
+          };
+        });
+        $('wb-color').onchange = function () { color = this.value; };
+        $('wb-color').oninput = function () { color = this.value; };
+        $('wb-clear').onclick = function () { clearCanvas(); };
+        $('wb-back').onclick = function () { location.hash = '#/student'; };
+        $('wb-submit').onclick = submitCanvas;
+      }
+
+      function onResize() { if (canvas) resizeCanvas(); }
+
+      function setupCanvas() {
+        wrap = $('wb-canvas-wrap');
+        canvas = $('wb-canvas');
+        ctx = canvas.getContext('2d');
+        dpr = window.devicePixelRatio || 1;
+        window.removeEventListener('resize', onResize);
+        window.addEventListener('resize', onResize);
+        bindCanvasEvents();
+        resizeCanvas();
+        clearCanvas();
+        applyStyle();
+      }
+
+      function resizeCanvas() {
+        var w = wrap.clientWidth;
+        var h = wrap.clientHeight;
+        if (!w || !h) return;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function clearCanvas() {
+        if (!ctx) return;
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function bindCanvasEvents() {
+        canvas.addEventListener('touchstart', startStroke, { passive: false });
+        canvas.addEventListener('touchmove', moveStroke, { passive: false });
+        canvas.addEventListener('touchend', endStroke, { passive: false });
+        canvas.addEventListener('touchcancel', endStroke, { passive: false });
+        canvas.addEventListener('mousedown', startStroke);
+        window.addEventListener('mousemove', moveStroke);
+        window.addEventListener('mouseup', endStroke);
+      }
+
+      function getPos(e) {
+        var t = e.touches && e.touches.length ? e.touches[0] : e;
+        var rect = canvas.getBoundingClientRect();
+        return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+      }
+
+      function applyStyle() {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = 'source-over';
+        if (tool === 'eraser') {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 26;
+        } else if (tool === 'marker') {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 10;
+        } else {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+        }
+      }
+
+      function startStroke(e) {
+        e.preventDefault();
+        drawing = true;
+        strokePoints = [getPos(e)];
+        applyStyle();
+        ctx.beginPath();
+        ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
+        ctx.lineTo(strokePoints[0].x + 0.01, strokePoints[0].y + 0.01);
+        ctx.stroke();
+      }
+
+      function moveStroke(e) {
+        if (!drawing) return;
+        e.preventDefault();
+        var p = getPos(e);
+        var n = strokePoints.length;
+        strokePoints.push(p);
+        if (n >= 2) {
+          var a = strokePoints[n - 2];
+          var b = strokePoints[n - 1];
+          var c = p;
+          var midB = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          var midC = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+          ctx.beginPath();
+          ctx.moveTo(midB.x, midB.y);
+          ctx.quadraticCurveTo(b.x, b.y, midC.x, midC.y);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+        }
+      }
+
+      function endStroke(e) {
+        if (!drawing) return;
+        if (e && e.preventDefault) e.preventDefault();
+        drawing = false;
+        strokePoints = [];
+      }
+
+      function exportDataUrl() {
+        var MAX = 1600;
+        var w = canvas.width / dpr;
+        var h = canvas.height / dpr;
+        var scale = Math.min(1, MAX / Math.max(w, h));
+        var out = document.createElement('canvas');
+        out.width = Math.round(w * scale);
+        out.height = Math.round(h * scale);
+        var octx = out.getContext('2d');
+        octx.fillStyle = '#ffffff';
+        octx.fillRect(0, 0, out.width, out.height);
+        octx.drawImage(canvas, 0, 0, out.width, out.height);
+        try {
+          return out.toDataURL('image/jpeg', 0.9);
+        } catch (err) {
+          return out.toDataURL('image/png');
+        }
+      }
+
+      function submitCanvas() {
+        var btn = $('wb-submit');
+        btn.disabled = true;
+        setStatus('Saving &amp; submitting&hellip;', 'info');
+        var dataUrl = exportDataUrl();
+        var assignmentId = CURRENT_ASSIGNMENT ? CURRENT_ASSIGNMENT.id : '';
+        call('saveCanvasImage', dataUrl, assignmentId, CURRENT_USER.email)
+          .then(function (res) {
+            btn.disabled = false;
+            setStatus('Submitted! Your work is saved.', 'ok');
+            setTimeout(function () { location.hash = '#/student'; }, 1200);
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            setStatus('Save failed: ' + err, 'err');
+          });
+      }
+
+      window.addEventListener('DOMContentLoaded', init);
+    })();
+    </script>
+  </body>
+</html>
