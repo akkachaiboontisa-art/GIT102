@@ -317,6 +317,7 @@
             <input type="color" id="wb-color" value="#1a1a1a">
           </label>
           <button class="wb-btn" id="wb-clear">Clear</button>
+          <button class="wb-btn" id="wb-zoom-reset" title="Reset zoom to 100%">Reset zoom</button>
           <button class="wb-btn primary" id="wb-submit">Save &amp; Submit</button>
         </div>
         <div id="wb-head">
@@ -341,9 +342,15 @@
 
       var canvas, wrap, ctx, dpr = 1;
       var drawing = false;
-      var strokePoints = [];
+      var strokes = [];
+      var currentStroke = null;
       var tool = 'pencil';
       var color = '#1a1a1a';
+      var viewZoom = 1;
+      var viewPanX = 0;
+      var viewPanY = 0;
+      var pinch = null;
+      var gesture = '';
 
       function $(id) { return document.getElementById(id); }
       function show(id) { $(id).classList.remove('hidden'); }
@@ -662,6 +669,7 @@
         $('wb-color').onchange = function () { color = this.value; };
         $('wb-color').oninput = function () { color = this.value; };
         $('wb-clear').onclick = function () { clearCanvas(); };
+        $('wb-zoom-reset').onclick = function () { resetView(); };
         $('wb-back').onclick = function () { location.hash = '#/student'; };
         $('wb-submit').onclick = submitCanvas;
       }
@@ -676,9 +684,27 @@
         window.removeEventListener('resize', onResize);
         window.addEventListener('resize', onResize);
         bindCanvasEvents();
+        resetView();
         resizeCanvas();
         clearCanvas();
         applyStyle();
+      }
+
+      function applyView() {
+        if (!ctx) return;
+        ctx.setTransform(dpr * viewZoom, 0, 0, dpr * viewZoom, dpr * viewPanX, dpr * viewPanY);
+      }
+
+      function resetView() {
+        viewZoom = 1;
+        viewPanX = 0;
+        viewPanY = 0;
+        applyView();
+        redraw();
+      }
+
+      function toCanvas(p) {
+        return { x: (p.x - viewPanX) / viewZoom, y: (p.y - viewPanY) / viewZoom };
       }
 
       function resizeCanvas() {
@@ -687,32 +713,173 @@
         if (!w || !h) return;
         canvas.width = Math.round(w * dpr);
         canvas.height = Math.round(h * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        applyView();
+        redraw();
       }
 
       function clearCanvas() {
+        strokes = [];
+        currentStroke = null;
+        redraw();
+      }
+
+      function redraw() {
         if (!ctx) return;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = 'source-over';
+        applyView();
+        strokes.forEach(drawStrokePath);
+      }
+
+      function applyStrokeStyle(s) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = 'source-over';
+        if (s.tool === 'eraser') {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 26;
+        } else if (s.tool === 'marker') {
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 10;
+        } else {
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 3;
+        }
+      }
+
+      function drawStrokePath(s) {
+        var pts = s.points;
+        if (!pts.length) return;
+        applyStrokeStyle(s);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        if (pts.length === 1) {
+          ctx.lineTo(pts[0].x + 0.01, pts[0].y + 0.01);
+          ctx.stroke();
+          return;
+        }
+        ctx.lineTo(pts[1].x, pts[1].y);
+        for (var i = 2; i < pts.length; i++) {
+          var a = pts[i - 2];
+          var b = pts[i - 1];
+          var c = pts[i];
+          var midB = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          var midC = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+          ctx.moveTo(midB.x, midB.y);
+          ctx.quadraticCurveTo(b.x, b.y, midC.x, midC.y);
+        }
+        ctx.stroke();
       }
 
       function bindCanvasEvents() {
-        canvas.addEventListener('touchstart', startStroke, { passive: false });
-        canvas.addEventListener('touchmove', moveStroke, { passive: false });
-        canvas.addEventListener('touchend', endStroke, { passive: false });
-        canvas.addEventListener('touchcancel', endStroke, { passive: false });
+        canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+        canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+        canvas.addEventListener('touchcancel', onTouchEnd, { passive: false });
         canvas.addEventListener('mousedown', startStroke);
         window.addEventListener('mousemove', moveStroke);
         window.addEventListener('mouseup', endStroke);
+        canvas.addEventListener('wheel', onWheel, { passive: false });
       }
 
       function getPos(e) {
         var t = e.touches && e.touches.length ? e.touches[0] : e;
         var rect = canvas.getBoundingClientRect();
         return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+      }
+
+      function touchPoint(t) {
+        var rect = canvas.getBoundingClientRect();
+        return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+      }
+
+      function pinchMid(t1, t2) {
+        return { x: (t1.x + t2.x) / 2, y: (t1.y + t2.y) / 2 };
+      }
+
+      function pinchDist(t1, t2) {
+        var dx = t1.x - t2.x, dy = t1.y - t2.y;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function beginPinch(e) {
+        var t1 = touchPoint(e.touches[0]);
+        var t2 = touchPoint(e.touches[1]);
+        pinch = {
+          startDist: pinchDist(t1, t2),
+          mid: pinchMid(t1, t2),
+          zoom: viewZoom,
+          panX: viewPanX,
+          panY: viewPanY
+        };
+        gesture = 'pinch';
+      }
+
+      function onTouchStart(e) {
+        if (e.touches && e.touches.length >= 2) {
+          e.preventDefault();
+          drawing = false;
+          currentStroke = null;
+          beginPinch(e);
+          return;
+        }
+        if (gesture === 'pinch') { e.preventDefault(); return; }
+        startStroke(e);
+      }
+
+      function onTouchMove(e) {
+        if (gesture === 'pinch') {
+          e.preventDefault();
+          if (e.touches && e.touches.length >= 2) {
+            var t1 = touchPoint(e.touches[0]);
+            var t2 = touchPoint(e.touches[1]);
+            var mid = pinchMid(t1, t2);
+            var dist = pinchDist(t1, t2);
+            var base = Math.max(1, pinch.startDist);
+            var z = Math.max(0.25, Math.min(8, pinch.zoom * (dist / base)));
+            var wx = (pinch.mid.x - pinch.panX) / pinch.zoom;
+            var wy = (pinch.mid.y - pinch.panY) / pinch.zoom;
+            viewZoom = z;
+            viewPanX = mid.x - wx * z;
+            viewPanY = mid.y - wy * z;
+            applyView();
+            redraw();
+          }
+          return;
+        }
+        moveStroke(e);
+      }
+
+      function onTouchEnd(e) {
+        if (gesture === 'pinch') {
+          e.preventDefault();
+          pinch = null;
+          gesture = '';
+          drawing = false;
+          currentStroke = null;
+          return;
+        }
+        endStroke(e);
+      }
+
+      function onWheel(e) {
+        e.preventDefault();
+        var rect = canvas.getBoundingClientRect();
+        var px = e.clientX - rect.left;
+        var py = e.clientY - rect.top;
+        var z = Math.max(0.25, Math.min(8, viewZoom * Math.pow(1.1, -e.deltaY / 100)));
+        var wx = (px - viewPanX) / viewZoom;
+        var wy = (py - viewPanY) / viewZoom;
+        viewZoom = z;
+        viewPanX = px - wx * z;
+        viewPanY = py - wy * z;
+        applyView();
+        redraw();
       }
 
       function applyStyle() {
@@ -734,23 +901,24 @@
       function startStroke(e) {
         e.preventDefault();
         drawing = true;
-        strokePoints = [getPos(e)];
+        var p = toCanvas(getPos(e));
+        currentStroke = { tool: tool, color: color, points: [p] };
+        strokes.push(currentStroke);
         applyStyle();
         ctx.beginPath();
-        ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
-        ctx.lineTo(strokePoints[0].x + 0.01, strokePoints[0].y + 0.01);
-        ctx.stroke();
+        ctx.moveTo(p.x, p.y);
       }
 
       function moveStroke(e) {
-        if (!drawing) return;
+        if (!drawing || !currentStroke) return;
         e.preventDefault();
-        var p = getPos(e);
-        var n = strokePoints.length;
-        strokePoints.push(p);
-        if (n >= 2) {
-          var a = strokePoints[n - 2];
-          var b = strokePoints[n - 1];
+        var p = toCanvas(getPos(e));
+        var pts = currentStroke.points;
+        pts.push(p);
+        var n = pts.length;
+        if (n >= 3) {
+          var a = pts[n - 3];
+          var b = pts[n - 2];
           var c = p;
           var midB = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
           var midC = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
@@ -758,9 +926,9 @@
           ctx.moveTo(midB.x, midB.y);
           ctx.quadraticCurveTo(b.x, b.y, midC.x, midC.y);
           ctx.stroke();
-        } else {
+        } else if (n === 2) {
           ctx.beginPath();
-          ctx.moveTo(strokePoints[0].x, strokePoints[0].y);
+          ctx.moveTo(pts[0].x, pts[0].y);
           ctx.lineTo(p.x, p.y);
           ctx.stroke();
         }
@@ -770,11 +938,13 @@
         if (!drawing) return;
         if (e && e.preventDefault) e.preventDefault();
         drawing = false;
-        strokePoints = [];
+        currentStroke = null;
       }
 
       function exportDataUrl() {
         var MAX = 1600;
+        var savedZoom = viewZoom, savedPanX = viewPanX, savedPanY = viewPanY;
+        resetView();
         var w = canvas.width / dpr;
         var h = canvas.height / dpr;
         var scale = Math.min(1, MAX / Math.max(w, h));
@@ -785,6 +955,10 @@
         octx.fillStyle = '#ffffff';
         octx.fillRect(0, 0, out.width, out.height);
         octx.drawImage(canvas, 0, 0, out.width, out.height);
+        viewZoom = savedZoom;
+        viewPanX = savedPanX;
+        viewPanY = savedPanY;
+        redraw();
         try {
           return out.toDataURL('image/jpeg', 0.9);
         } catch (err) {
