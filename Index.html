@@ -151,6 +151,26 @@
         background: #eee;
         border: 1px solid var(--line);
       }
+      .stars { display: flex; gap: 2px; margin-top: 6px; }
+      .stars button {
+        background: none;
+        border: none;
+        font-size: 24px;
+        line-height: 1;
+        padding: 0 2px;
+        color: #dadce0;
+        cursor: pointer;
+      }
+      .stars button.on { color: #f9a825; }
+      .score-label {
+        background: #e8f0fe;
+        color: var(--blue);
+        border-radius: 20px;
+        padding: 4px 12px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-left: auto;
+      }
 
       #view-whiteboard {
         position: fixed;
@@ -312,7 +332,11 @@
           <div class="modal-box">
             <div class="modal-head">
               <h3 id="sm-title">Submissions</h3>
-              <button id="sm-close" class="btn">Close</button>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span id="sm-score-msg" class="msg" style="margin-top:0;"></span>
+                <button id="sm-update" class="btn">Update Score</button>
+                <button id="sm-close" class="btn">Close</button>
+              </div>
             </div>
             <div id="sm-body"></div>
           </div>
@@ -471,6 +495,7 @@
         $('t-signout').onclick = function () { window.top.location = 'https://accounts.google.com/Logout'; };
         $('s-signout').onclick = function () { window.top.location = 'https://accounts.google.com/Logout'; };
         $('sm-close').onclick = function () { hide('submission-modal'); };
+        $('sm-update').onclick = updateScores;
         show('view-loading');
 
         var settled = false;
@@ -657,41 +682,83 @@
       function openSubmissions(assignmentId) {
         $('sm-title').textContent = 'Submissions';
         $('sm-body').innerHTML = 'Loading&hellip;';
+        clearScoreMsg();
         show('submission-modal');
-        call('getStudentSubmissions', assignmentId).then(function (subs) {
-          var el = $('sm-body');
-          if (!subs || !subs.length) { el.innerHTML = 'No submissions yet.'; return; }
-          el.innerHTML = '';
-          subs.forEach(function (s) {
-            var item = document.createElement('div');
-            item.className = 'submission-item';
-            item.innerHTML =
-              '<a href="' + esc(s.imageUrl) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(thumbFor(s.imageUrl)) + '" alt="Submission"></a>' +
-              '<div><div class="a-head"><strong>' + esc(s.studentName) + '</strong></div>' +
-              '<div class="a-meta">' + esc(s.status) + ' &middot; ' + fmtDate(s.submittedDate) + '</div></div>';
-            el.appendChild(item);
-          });
-        }).catch(function (err) { $('sm-body').innerHTML = 'Error: ' + esc(err); });
+        call('getStudentSubmissions', assignmentId).then(renderSubmissions)
+          .catch(function (err) { $('sm-body').innerHTML = 'Error: ' + esc(err); });
       }
 
       function openStudentSubmissions(email, name) {
         $('sm-title').textContent = 'Submissions - ' + name;
         $('sm-body').innerHTML = 'Loading&hellip;';
+        clearScoreMsg();
         show('submission-modal');
-        call('getTeacherStudentSubmissions', email).then(function (subs) {
-          var el = $('sm-body');
-          if (!subs || !subs.length) { el.innerHTML = 'No submissions yet.'; return; }
-          el.innerHTML = '';
-          subs.forEach(function (s) {
-            var item = document.createElement('div');
-            item.className = 'submission-item';
-            item.innerHTML =
-              '<a href="' + esc(s.imageUrl) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(thumbFor(s.imageUrl)) + '" alt="Submission"></a>' +
-              '<div><div class="a-head"><strong>' + esc(s.title) + '</strong></div>' +
-              '<div class="a-meta">' + esc(s.status) + ' &middot; ' + fmtDate(s.submittedDate) + '</div></div>';
-            el.appendChild(item);
+        call('getTeacherStudentSubmissions', email).then(renderSubmissions)
+          .catch(function (err) { $('sm-body').innerHTML = 'Error: ' + esc(err); });
+      }
+
+      function clearScoreMsg() {
+        $('sm-score-msg').textContent = '';
+        $('sm-score-msg').className = 'msg';
+      }
+
+      function renderSubmissions(subs) {
+        var el = $('sm-body');
+        if (!subs || !subs.length) { el.innerHTML = 'No submissions yet.'; return; }
+        el.innerHTML = '';
+        subs.forEach(function (s) {
+          var item = document.createElement('div');
+          item.className = 'submission-item';
+          var score = Number(s.score) || 0;
+          var starsHtml = '<div class="stars" data-sid="' + esc(s.id) + '">';
+          for (var k = 1; k <= 5; k++) {
+            starsHtml += '<button type="button" data-v="' + k + '"' + (k <= score ? ' class="on"' : '') + '>&#9733;</button>';
+          }
+          starsHtml += '</div>';
+          var head = s.studentName ? s.studentName : s.title;
+          var meta = (s.title ? esc(s.title) + ' &middot; ' : '') + esc(s.status) + ' &middot; ' + fmtDate(s.submittedDate);
+          item.innerHTML =
+            '<a href="' + esc(s.imageUrl) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(thumbFor(s.imageUrl)) + '" alt="Submission"></a>' +
+            '<div style="flex:1;min-width:0;">' +
+              '<div class="a-head"><strong>' + esc(head) + '</strong></div>' +
+              '<div class="a-meta">' + meta + '</div>' +
+              starsHtml +
+            '</div>';
+          item.querySelector('.stars').onclick = function (ev) {
+            var b = ev.target;
+            if (b.tagName !== 'BUTTON') return;
+            var v = Number(b.getAttribute('data-v'));
+            var btns = this.querySelectorAll('button');
+            btns.forEach(function (x) { x.classList.toggle('on', Number(x.getAttribute('data-v')) <= v); });
+          };
+          el.appendChild(item);
+        });
+      }
+
+      function updateScores() {
+        var msgEl = $('sm-score-msg');
+        var items = [];
+        document.querySelectorAll('#sm-body .stars').forEach(function (row) {
+          var v = 0;
+          row.querySelectorAll('button').forEach(function (b) {
+            if (b.classList.contains('on')) v = Number(b.getAttribute('data-v'));
           });
-        }).catch(function (err) { $('sm-body').innerHTML = 'Error: ' + esc(err); });
+          items.push({ submissionId: row.getAttribute('data-sid'), score: v });
+        });
+        if (!items.length) {
+          msgEl.textContent = 'Nothing to save.';
+          msgEl.className = 'msg err';
+          return;
+        }
+        msgEl.textContent = 'Saving…';
+        msgEl.className = 'msg info';
+        call('setSubmissionScores', items).then(function (res) {
+          msgEl.textContent = 'Saved ' + res.updated + ' score(s).';
+          msgEl.className = 'msg ok';
+        }).catch(function (err) {
+          msgEl.textContent = 'Error: ' + err;
+          msgEl.className = 'msg err';
+        });
       }
 
       // ---------------- Student ----------------
@@ -734,10 +801,17 @@
           items.forEach(function (s) {
             var card = document.createElement('div');
             card.className = 'assignment-item';
+            var score = Number(s.score) || 0;
+            var scoreHtml = score > 0
+              ? '<span class="score-label" title="Score: ' + score + '/5">Score: ' + score + '/5</span>'
+              : '';
             card.innerHTML =
               '<div class="a-head"><strong>' + esc(s.title) + '</strong></div>' +
               '<div class="a-meta">Submitted: ' + fmtDate(s.submittedDate) + '</div>' +
-              '<button class="btn small" data-aid="' + esc(s.id) + '">Open work</button>';
+              '<div style="display:flex; align-items:center; gap:10px; margin-top:6px;">' +
+                '<button class="btn small" data-aid="' + esc(s.id) + '">Open work</button>' +
+                scoreHtml +
+              '</div>';
             card.querySelector('button').onclick = function () {
               window.open(s.imageUrl, '_blank', 'noopener');
             };

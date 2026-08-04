@@ -38,12 +38,22 @@ function ensureSheets_(ss) {
   var defs = {
     'Users': ['Email', 'Name', 'Role'],
     'Assignments': ['Assignment ID', 'Title', 'Description', 'Created Date', 'Created By', 'Assigned To'],
-    'Submissions': ['Submission ID', 'Assignment ID', 'Student Email', 'Status', 'Image URL', 'Submitted Date']
+    'Submissions': ['Submission ID', 'Assignment ID', 'Student Email', 'Status', 'Image URL', 'Submitted Date', 'Score']
   };
   Object.keys(defs).forEach(function (name) {
     var sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
-    if (sh.getLastRow() === 0) sh.appendRow(defs[name]);
+    if (sh.getLastRow() === 0) {
+      sh.appendRow(defs[name]);
+    } else {
+      var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+      defs[name].forEach(function (h) {
+        if (headers.indexOf(h) === -1) {
+          sh.getRange(1, sh.getLastColumn() + 1).setValue(h);
+          headers.push(h);
+        }
+      });
+    }
   });
 }
 
@@ -136,7 +146,7 @@ function getSubmittedWork(userEmail) {
     .filter(function (r) { return r[2] && String(r[2]).toLowerCase() === userEmail.toLowerCase(); })
     .map(function (r) {
       var a = aMap[r[1]] || [];
-      return { id: r[0], assignmentId: r[1], title: a[1] || 'Untitled', description: a[2] || '', status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]) };
+      return { id: r[0], assignmentId: r[1], title: a[1] || 'Untitled', description: a[2] || '', status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]), score: r.length > 6 ? Number(r[6]) || 0 : 0 };
     });
 }
 
@@ -162,7 +172,7 @@ function getStudentSubmissions(assignmentId) {
   return ss.getSheetByName('Submissions').getDataRange().getValues().slice(1)
     .filter(function (r) { return r[1] === assignmentId; })
     .map(function (r) {
-      return { id: r[0], studentEmail: r[2], studentName: nameMap[String(r[2]).toLowerCase()] || r[2], status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]) };
+      return { id: r[0], studentEmail: r[2], studentName: nameMap[String(r[2]).toLowerCase()] || r[2], status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]), score: r.length > 6 ? Number(r[6]) || 0 : 0 };
     });
 }
 
@@ -178,9 +188,43 @@ function getTeacherStudentSubmissions(studentEmail) {
     .filter(function (r) { return r[2] && String(r[2]).toLowerCase() === String(studentEmail).toLowerCase(); })
     .map(function (r) {
       var a = aMap[r[1]] || [];
-      return { id: r[0], assignmentId: r[1], title: a[1] || 'Untitled', description: a[2] || '', status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]) };
+      return { id: r[0], assignmentId: r[1], title: a[1] || 'Untitled', description: a[2] || '', status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]), score: r.length > 6 ? Number(r[6]) || 0 : 0 };
     })
     .sort(function (x, y) { return String(x.title).localeCompare(String(y.title)); });
+}
+
+function submissionScoreCol_() {
+  var sh = getDb_().getSheetByName('Submissions');
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i]).toLowerCase() === 'score') return i + 1;
+  }
+  return -1;
+}
+
+function setSubmissionScores(items) {
+  var me = getMe();
+  if (me.role !== 'Teacher') throw new Error('Permission denied.');
+  if (!items || !items.length) return { updated: 0 };
+  var sh = getDb_().getSheetByName('Submissions');
+  var col = submissionScoreCol_();
+  if (col < 1) throw new Error('Score column missing.');
+  var values = sh.getDataRange().getValues();
+  var rowBySubmissionId = {};
+  for (var i = 1; i < values.length; i++) {
+    if (values[i][0]) rowBySubmissionId[values[i][0]] = i + 1;
+  }
+  var updated = 0;
+  items.forEach(function (it) {
+    var row = rowBySubmissionId[it.submissionId];
+    if (!row) return;
+    var score = Number(it.score);
+    if (isNaN(score)) score = 0;
+    score = Math.max(0, Math.min(5, Math.round(score)));
+    sh.getRange(row, col).setValue(score);
+    updated++;
+  });
+  return { updated: updated };
 }
 
 function getSubmissionsFolder_() {
