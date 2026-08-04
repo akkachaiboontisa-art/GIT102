@@ -179,6 +179,39 @@
         cursor: pointer;
       }
       .wb-btn.primary { background: var(--blue); color: #fff; }
+      .wb-btn:disabled { opacity: .5; cursor: default; }
+
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(26, 115, 232, .25);
+        border-top-color: var(--blue);
+        border-radius: 50%;
+        animation: spin .8s linear infinite;
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .btn.primary .spinner, .wb-btn.primary .spinner {
+        border-color: rgba(255, 255, 255, .35);
+        border-top-color: #fff;
+      }
+
+      #wb-busy {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: rgba(255, 255, 255, .78);
+        font-size: 14px;
+        color: var(--muted);
+        z-index: 6;
+      }
+      #wb-busy .spinner { width: 36px; height: 36px; border-width: 4px; margin-right: 0; }
       .tool-btn {
         background: #f1f3f4;
         border: 2px solid transparent;
@@ -191,9 +224,9 @@
       .color-wrap { display: flex; align-items: center; gap: 6px; font-size: 13px; }
       #wb-color { width: 44px; height: 34px; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 
-      #wb-head { padding: 6px 14px; border-bottom: 1px solid var(--line); }
-      #wb-head h2 { margin: 0; font-size: 16px; }
-      #wb-desc { margin: 2px 0 0; color: var(--muted); font-size: 13px; white-space: pre-wrap; }
+      #wb-head { margin-left: auto; padding: 0 4px; text-align: right; min-width: 0; }
+      #wb-head h2 { margin: 0; font-size: 15px; }
+      #wb-desc { margin: 2px 0 0; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
 
       #wb-canvas-wrap {
         flex: 1;
@@ -311,23 +344,41 @@
             <button class="tool-btn active" data-tool="pencil">Pencil</button>
             <button class="tool-btn" data-tool="marker">Marker</button>
             <button class="tool-btn" data-tool="eraser">Eraser</button>
+            <button class="tool-btn" data-tool="select">Select</button>
           </div>
           <label class="color-wrap">
             <span>Color</span>
             <input type="color" id="wb-color" value="#1a1a1a">
           </label>
+          <button class="wb-btn" id="wb-undo">Undo</button>
+          <button class="wb-btn" id="wb-redo">Redo</button>
           <button class="wb-btn" id="wb-clear">Clear</button>
           <button class="wb-btn" id="wb-zoom-reset" title="Reset zoom to 100%">Reset zoom</button>
           <button class="wb-btn primary" id="wb-submit">Save &amp; Submit</button>
-        </div>
-        <div id="wb-head">
-          <h2 id="wb-title"></h2>
-          <p id="wb-desc"></p>
+          <div id="wb-head">
+            <h2 id="wb-title"></h2>
+            <p id="wb-desc"></p>
+          </div>
         </div>
         <div id="wb-canvas-wrap">
           <canvas id="wb-canvas"></canvas>
+          <div id="wb-busy" class="hidden">
+            <span class="spinner"></span>
+            <span id="wb-busy-text">Submitting&hellip;</span>
+          </div>
         </div>
         <div id="wb-status" class="msg"></div>
+
+        <div id="wb-confirm" class="modal hidden">
+          <div class="modal-box">
+            <div class="modal-head"><h3>Submit work?</h3></div>
+            <p style="font-size:14px; color:var(--muted);">Your drawing will be saved and sent to your teacher. Do you want to continue?</p>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+              <button class="btn" id="wb-confirm-cancel">Cancel</button>
+              <button class="btn primary" id="wb-confirm-ok">Submit</button>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -351,6 +402,8 @@
       var viewPanY = 0;
       var pinch = null;
       var gesture = '';
+      var undoStack = [];
+      var redoStack = [];
 
       function $(id) { return document.getElementById(id); }
       function show(id) { $(id).classList.remove('hidden'); }
@@ -381,6 +434,11 @@
         var el = $('wb-status');
         el.textContent = msg || '';
         el.className = 'msg ' + (cls || '');
+      }
+
+      function showBusy(on, text) {
+        if (text) $('wb-busy-text').textContent = text;
+        $('wb-busy').classList.toggle('hidden', !on);
       }
 
       function call(fn) {
@@ -524,13 +582,22 @@
         var name = $('t-new-name').value.trim();
         var msg = $('t-add-msg');
         if (!email || !name) { msg.innerHTML = 'Enter both email and name.'; msg.className = 'msg err'; return; }
+        var btn = $('t-add-student');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>Adding&hellip;';
         call('addUser', email, name, 'Student').then(function (res) {
           msg.textContent = res.created ? 'Added ' + name + '.' : 'Updated ' + name + '.';
           msg.className = 'msg ok';
           $('t-new-email').value = '';
           $('t-new-name').value = '';
           loadStudentList();
-        }).catch(function (err) { msg.textContent = err; msg.className = 'msg err'; });
+        }).catch(function (err) {
+          msg.textContent = err;
+          msg.className = 'msg err';
+        }).finally(function () {
+          btn.disabled = false;
+          btn.textContent = 'Add student';
+        });
       }
 
       function createAssignment() {
@@ -539,13 +606,22 @@
         var to = $('t-assigned-to').value;
         var msg = $('t-create-msg');
         if (!title || !desc) { msg.textContent = 'Title and description are required.'; msg.className = 'msg err'; return; }
+        var btn = $('t-create');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>Creating&hellip;';
         call('createAssignment', title, desc, to).then(function () {
           msg.textContent = 'Assignment created.';
           msg.className = 'msg ok';
           $('t-title').value = '';
           $('t-desc').value = '';
           loadTeacherAssignments();
-        }).catch(function (err) { msg.textContent = err; msg.className = 'msg err'; });
+        }).catch(function (err) {
+          msg.textContent = err;
+          msg.className = 'msg err';
+        }).finally(function () {
+          btn.disabled = false;
+          btn.textContent = 'Create assignment';
+        });
       }
 
       function loadTeacherAssignments() {
@@ -664,6 +740,8 @@
             tools.forEach(function (x) { x.classList.remove('active'); });
             b.classList.add('active');
             tool = b.getAttribute('data-tool');
+            if (tool === 'select') setStatus('Tap a stroke to delete it.', 'info');
+            else setStatus('');
           };
         });
         $('wb-color').onchange = function () { color = this.value; };
@@ -671,7 +749,12 @@
         $('wb-clear').onclick = function () { clearCanvas(); };
         $('wb-zoom-reset').onclick = function () { resetView(); };
         $('wb-back').onclick = function () { location.hash = '#/student'; };
+        $('wb-undo').onclick = undo;
+        $('wb-redo').onclick = redo;
         $('wb-submit').onclick = submitCanvas;
+        $('wb-confirm-cancel').onclick = function () { hide('wb-confirm'); };
+        $('wb-confirm-ok').onclick = function () { hide('wb-confirm'); doSubmitCanvas(); };
+        updateHistoryButtons();
       }
 
       function onResize() { if (canvas) resizeCanvas(); }
@@ -718,9 +801,80 @@
       }
 
       function clearCanvas() {
+        if (strokes.length) commitHistory();
         strokes = [];
         currentStroke = null;
         redraw();
+      }
+
+      function cloneStrokes(list) {
+        return list.map(function (s) {
+          return { tool: s.tool, color: s.color, points: s.points.slice() };
+        });
+      }
+
+      function commitHistory() {
+        undoStack.push(cloneStrokes(strokes));
+        while (undoStack.length > 20) undoStack.shift();
+        redoStack = [];
+        updateHistoryButtons();
+      }
+
+      function undo() {
+        if (!undoStack.length) return;
+        redoStack.push(cloneStrokes(strokes));
+        strokes = undoStack.pop();
+        redraw();
+        updateHistoryButtons();
+      }
+
+      function redo() {
+        if (!redoStack.length) return;
+        undoStack.push(cloneStrokes(strokes));
+        strokes = redoStack.pop();
+        redraw();
+        updateHistoryButtons();
+      }
+
+      function updateHistoryButtons() {
+        $('wb-undo').disabled = !undoStack.length;
+        $('wb-redo').disabled = !redoStack.length;
+      }
+
+      function distToSegment(px, py, a, b) {
+        var dx = b.x - a.x, dy = b.y - a.y;
+        if (dx === 0 && dy === 0) return Math.hypot(px - a.x, py - a.y);
+        var t = ((px - a.x) * dx + (py - a.y) * dy) / (dx * dx + dy * dy);
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - a.x - t * dx, py - a.y - t * dy);
+      }
+
+      function selectStrokeAt(p) {
+        var pp = toCanvas(p);
+        var tol = 6 / viewZoom;
+        for (var i = strokes.length - 1; i >= 0; i--) {
+          var s = strokes[i];
+          var pts = s.points;
+          if (!pts.length) continue;
+          var rad = s.tool === 'eraser' ? 13 : s.tool === 'marker' ? 5 / viewZoom : 1.5 / viewZoom;
+          var best = Infinity;
+          if (pts.length === 1) {
+            best = Math.hypot(pp.x - pts[0].x, pp.y - pts[0].y);
+          } else {
+            for (var j = 0; j < pts.length - 1; j++) {
+              var d = distToSegment(pp.x, pp.y, pts[j], pts[j + 1]);
+              if (d < best) best = d;
+            }
+          }
+          if (best <= rad + tol) {
+            strokes.splice(i, 1);
+            commitHistory();
+            redraw();
+            setStatus('Stroke deleted.', 'ok');
+            return;
+          }
+        }
+        setStatus('No stroke found there.', 'info');
       }
 
       function redraw() {
@@ -900,6 +1054,10 @@
 
       function startStroke(e) {
         e.preventDefault();
+        if (tool === 'select') {
+          selectStrokeAt(getPos(e));
+          return;
+        }
         drawing = true;
         var p = toCanvas(getPos(e));
         currentStroke = { tool: tool, color: color, points: [p] };
@@ -939,6 +1097,7 @@
         if (e && e.preventDefault) e.preventDefault();
         drawing = false;
         currentStroke = null;
+        commitHistory();
       }
 
       function exportDataUrl() {
@@ -967,19 +1126,25 @@
       }
 
       function submitCanvas() {
+        show('wb-confirm');
+      }
+
+      function doSubmitCanvas() {
         var btn = $('wb-submit');
         btn.disabled = true;
-        setStatus('Saving &amp; submitting&hellip;', 'info');
+        showBusy(true, 'Submitting your work…');
         var dataUrl = exportDataUrl();
         var assignmentId = CURRENT_ASSIGNMENT ? CURRENT_ASSIGNMENT.id : '';
         call('saveCanvasImage', dataUrl, assignmentId, CURRENT_USER.email)
           .then(function (res) {
             btn.disabled = false;
+            showBusy(false);
             setStatus('Submitted! Your work is saved.', 'ok');
             setTimeout(function () { location.hash = '#/student'; }, 1200);
           })
           .catch(function (err) {
             btn.disabled = false;
+            showBusy(false);
             setStatus('Save failed: ' + err, 'err');
           });
       }
