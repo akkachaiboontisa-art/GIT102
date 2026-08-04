@@ -103,6 +103,8 @@
 
       .list { list-style: none; margin: 0; padding: 0; }
       .list li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+      .student-link { color: var(--blue); text-decoration: none; display: block; font-size: 15px; }
+      .student-link:hover { text-decoration: underline; }
 
       .assignment-item {
         border: 1px solid var(--line);
@@ -562,7 +564,15 @@
             list.innerHTML = '';
             students.forEach(function (s) {
               var li = document.createElement('li');
-              li.textContent = s.name + ' (' + s.email + ')';
+              var a = document.createElement('a');
+              a.href = '#';
+              a.className = 'student-link';
+              a.textContent = s.name + ' (' + s.email + ')';
+              a.onclick = function (ev) {
+                ev.preventDefault();
+                openStudentSubmissions(s.email, s.name);
+              };
+              li.appendChild(a);
               list.appendChild(li);
             });
           }
@@ -645,6 +655,7 @@
       }
 
       function openSubmissions(assignmentId) {
+        $('sm-title').textContent = 'Submissions';
         $('sm-body').innerHTML = 'Loading&hellip;';
         show('submission-modal');
         call('getStudentSubmissions', assignmentId).then(function (subs) {
@@ -657,6 +668,26 @@
             item.innerHTML =
               '<a href="' + esc(s.imageUrl) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(thumbFor(s.imageUrl)) + '" alt="Submission"></a>' +
               '<div><div class="a-head"><strong>' + esc(s.studentName) + '</strong></div>' +
+              '<div class="a-meta">' + esc(s.status) + ' &middot; ' + fmtDate(s.submittedDate) + '</div></div>';
+            el.appendChild(item);
+          });
+        }).catch(function (err) { $('sm-body').innerHTML = 'Error: ' + esc(err); });
+      }
+
+      function openStudentSubmissions(email, name) {
+        $('sm-title').textContent = 'Submissions - ' + name;
+        $('sm-body').innerHTML = 'Loading&hellip;';
+        show('submission-modal');
+        call('getTeacherStudentSubmissions', email).then(function (subs) {
+          var el = $('sm-body');
+          if (!subs || !subs.length) { el.innerHTML = 'No submissions yet.'; return; }
+          el.innerHTML = '';
+          subs.forEach(function (s) {
+            var item = document.createElement('div');
+            item.className = 'submission-item';
+            item.innerHTML =
+              '<a href="' + esc(s.imageUrl) + '" target="_blank" rel="noopener"><img class="thumb" src="' + esc(thumbFor(s.imageUrl)) + '" alt="Submission"></a>' +
+              '<div><div class="a-head"><strong>' + esc(s.title) + '</strong></div>' +
               '<div class="a-meta">' + esc(s.status) + ' &middot; ' + fmtDate(s.submittedDate) + '</div></div>';
             el.appendChild(item);
           });

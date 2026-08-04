@@ -166,6 +166,23 @@ function getStudentSubmissions(assignmentId) {
     });
 }
 
+function getTeacherStudentSubmissions(studentEmail) {
+  var me = getMe();
+  if (me.role !== 'Teacher') throw new Error('Permission denied.');
+  var ss = getDb_();
+  var aMap = {};
+  ss.getSheetByName('Assignments').getDataRange().getValues().slice(1).forEach(function (r) {
+    if (r[0]) aMap[r[0]] = r;
+  });
+  return ss.getSheetByName('Submissions').getDataRange().getValues().slice(1)
+    .filter(function (r) { return r[2] && String(r[2]).toLowerCase() === String(studentEmail).toLowerCase(); })
+    .map(function (r) {
+      var a = aMap[r[1]] || [];
+      return { id: r[0], assignmentId: r[1], title: a[1] || 'Untitled', description: a[2] || '', status: r[3], imageUrl: r[4], submittedDate: dtStr_(r[5]) };
+    })
+    .sort(function (x, y) { return String(x.title).localeCompare(String(y.title)); });
+}
+
 function getSubmissionsFolder_() {
   if (DB_FOLDER_ID) return DriveApp.getFolderById(DB_FOLDER_ID);
   var it = DriveApp.getFoldersByName('Whiteboard Submissions');
