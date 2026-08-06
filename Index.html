@@ -89,6 +89,9 @@
         padding: 16px;
       }
       .card h2, .card h3 { margin: 0 0 10px; font-size: 16px; }
+      .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+      .card-head h2, .card-head h3 { margin: 0; }
+      .score-total { color: var(--muted); font-size: 13px; font-weight: 600; }
 
       input, textarea, select {
         width: 100%;
@@ -105,6 +108,8 @@
       .list li { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
       .student-link { color: var(--blue); text-decoration: none; display: block; font-size: 15px; }
       .student-link:hover { text-decoration: underline; }
+      .list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .student-score { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
 
       .assignment-item {
         border: 1px solid var(--line);
@@ -196,11 +201,21 @@
         background: #f1f3f4;
         border: none;
         border-radius: 8px;
-        padding: 10px 14px;
+        padding: 8px;
         font-size: 14px;
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
+      }
+      .wb-btn svg, .tool-btn svg {
+        width: 18px;
+        height: 18px;
+        display: block;
       }
       .wb-btn.primary { background: var(--blue); color: #fff; }
+      .wb-btn.primary svg { color: #fff; }
       .wb-btn:disabled { opacity: .5; cursor: default; }
 
       .spinner {
@@ -238,12 +253,17 @@
         background: #f1f3f4;
         border: 2px solid transparent;
         border-radius: 8px;
-        padding: 8px 12px;
+        padding: 6px;
         font-size: 13px;
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 0;
       }
-      .tool-btn.active { border-color: var(--blue); background: #e8f0fe; color: var(--blue); font-weight: 600; }
+      .tool-btn.active { border-color: var(--blue); background: #e8f0fe; color: var(--blue); }
       .color-wrap { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+      .color-wrap svg { width: 18px; height: 18px; display: block; }
       #wb-color { width: 44px; height: 34px; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 
       #wb-head { margin-left: auto; padding: 0 4px; text-align: right; min-width: 0; }
@@ -357,7 +377,7 @@
             <div id="s-pending-list"></div>
           </section>
           <section class="card">
-            <h2>Completed Work</h2>
+            <div class="card-head"><h2>Completed Work</h2><span id="s-score-total" class="score-total"></span></div>
             <div id="s-completed-list"></div>
           </section>
         </div>
@@ -365,22 +385,42 @@
 
       <div id="view-whiteboard" class="view hidden">
         <div id="wb-toolbar">
-          <button class="wb-btn" id="wb-back">Back</button>
+          <button class="wb-btn" id="wb-back" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
           <div class="tool-group" id="wb-tools">
-            <button class="tool-btn active" data-tool="pencil">Pencil</button>
-            <button class="tool-btn" data-tool="marker">Marker</button>
-            <button class="tool-btn" data-tool="eraser">Eraser</button>
-            <button class="tool-btn" data-tool="select">Select</button>
+            <button class="tool-btn active" data-tool="pencil" title="Pencil">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+            </button>
+            <button class="tool-btn" data-tool="marker" title="Marker">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.5-5L15 5.5a2.1 2.1 0 0 1 3 3L8.5 18z"/><path d="M13 7l4 4"/><path d="M4 20h16"/></svg>
+            </button>
+            <button class="tool-btn" data-tool="eraser" title="Eraser">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21h13"/><path d="M4.5 13.5l7-7a2 2 0 0 1 2.8 0l4.2 4.2a2 2 0 0 1 0 2.8L13.3 19H7z"/></svg>
+            </button>
+            <button class="tool-btn" data-tool="select" title="Select">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l6.5 14 2-5 5-2z"/><path d="M14 17l3 4"/></svg>
+            </button>
           </div>
           <label class="color-wrap">
-            <span>Color</span>
-            <input type="color" id="wb-color" value="#1a1a1a">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a5 5 0 0 0 0 10 3 3 0 0 1 0 6"/><circle cx="7.5" cy="10" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16.5" cy="10" r="1"/></svg>
+            <input type="color" id="wb-color" value="#1a1a1a" title="Color">
           </label>
-          <button class="wb-btn" id="wb-undo">Undo</button>
-          <button class="wb-btn" id="wb-redo">Redo</button>
-          <button class="wb-btn" id="wb-clear">Clear</button>
-          <button class="wb-btn" id="wb-zoom-reset" title="Reset zoom to 100%">Reset zoom</button>
-          <button class="wb-btn primary" id="wb-submit">Save &amp; Submit</button>
+          <button class="wb-btn" id="wb-undo" title="Undo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+          </button>
+          <button class="wb-btn" id="wb-redo" title="Redo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
+          </button>
+          <button class="wb-btn" id="wb-clear" title="Clear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
+          <button class="wb-btn" id="wb-zoom-reset" title="Reset zoom to 100%">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+          </button>
+          <button class="wb-btn primary" id="wb-submit" title="Save & Submit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </button>
           <div id="wb-head">
             <h2 id="wb-title"></h2>
             <p id="wb-desc"></p>
@@ -599,6 +639,12 @@
                 openStudentSubmissions(s.email, s.name);
               };
               li.appendChild(a);
+              if (s.workCount > 0) {
+                var span = document.createElement('span');
+                span.className = 'student-score';
+                span.textContent = s.gotScore + '/' + (s.workCount * 5);
+                li.appendChild(span);
+              }
               list.appendChild(li);
             });
           }
@@ -672,7 +718,7 @@
             card.innerHTML =
               '<div class="a-head"><strong>' + esc(a.title) + '</strong><span class="a-date">' + fmtDate(a.createdDate) + '</span></div>' +
               '<div class="a-desc">' + esc(a.description) + '</div>' +
-              '<div class="a-meta">Assigned to: ' + esc(a.assignedTo) + ' &middot; Submissions: ' + a.submittedCount + '</div>' +
+              '<div class="a-meta">Assigned to: ' + esc(a.assignedTo) + ' &middot; Submissions: ' + a.submittedCount + ' &middot; Evaluated: ' + a.evaluatedCount + '</div>' +
               '<button class="btn small" data-aid="' + esc(a.id) + '">View submissions</button>';
             card.querySelector('button').onclick = function () { openSubmissions(a.id); };
             el.appendChild(card);
@@ -797,6 +843,9 @@
         var el = $('s-completed-list');
         el.innerHTML = 'Loading&hellip;';
         call('getSubmittedWork', CURRENT_USER.email).then(function (items) {
+          var sum = 0;
+          (items || []).forEach(function (x) { sum += Number(x.score) || 0; });
+          $('s-score-total').textContent = items && items.length ? sum + '/' + (items.length * 5) : '';
           if (!items || !items.length) { el.innerHTML = 'No completed work yet.'; return; }
           el.innerHTML = '';
           items.forEach(function (s) {
@@ -872,6 +921,11 @@
         dpr = window.devicePixelRatio || 1;
         window.removeEventListener('resize', onResize);
         window.addEventListener('resize', onResize);
+        if (window.ResizeObserver) {
+          if (wrap._wbRO) wrap._wbRO.disconnect();
+          wrap._wbRO = new ResizeObserver(function () { resizeCanvas(); });
+          wrap._wbRO.observe(wrap);
+        }
         bindCanvasEvents();
         resetView();
         resizeCanvas();
@@ -879,9 +933,18 @@
         applyStyle();
       }
 
+      function backingScale() {
+        var cw = canvas.clientWidth || 0, ch = canvas.clientHeight || 0;
+        return {
+          sx: cw ? canvas.width / cw : 1,
+          sy: ch ? canvas.height / ch : 1
+        };
+      }
+
       function applyView() {
         if (!ctx) return;
-        ctx.setTransform(dpr * viewZoom, 0, 0, dpr * viewZoom, dpr * viewPanX, dpr * viewPanY);
+        var s = backingScale();
+        ctx.setTransform(s.sx * viewZoom, 0, 0, s.sy * viewZoom, s.sx * viewPanX, s.sy * viewPanY);
       }
 
       function resetView() {
@@ -1006,7 +1069,8 @@
         var w = wrap.clientWidth || 0;
         var h = wrap.clientHeight || 0;
         if (!w || !h) return;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        var s = backingScale();
+        ctx.setTransform(s.sx, 0, 0, s.sy, 0, 0);
         ctx.setLineDash([10, 7]);
         ctx.strokeStyle = 'rgba(26, 115, 232, 0.5)';
         ctx.lineWidth = 2;

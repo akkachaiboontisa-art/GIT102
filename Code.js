@@ -95,10 +95,22 @@ function addUser(email, name, role) {
 }
 
 function getStudentList() {
-  return getDb_().getSheetByName('Users').getDataRange().getValues()
+  var ss = getDb_();
+  var sums = {};
+  var counts = {};
+  ss.getSheetByName('Submissions').getDataRange().getValues().slice(1).forEach(function (r) {
+    if (!r[2]) return;
+    var key = String(r[2]).toLowerCase();
+    counts[key] = (counts[key] || 0) + 1;
+    sums[key] = (sums[key] || 0) + (Number(r[6]) || 0);
+  });
+  return ss.getSheetByName('Users').getDataRange().getValues()
     .slice(1)
     .filter(function (r) { return r[0] && String(r[2]).toLowerCase() === 'student'; })
-    .map(function (r) { return { email: r[0], name: r[1] }; });
+    .map(function (r) {
+      var key = String(r[0]).toLowerCase();
+      return { email: r[0], name: r[1], gotScore: sums[key] || 0, workCount: counts[key] || 0 };
+    });
 }
 
 function createAssignment(title, desc, assignedTo) {
@@ -153,13 +165,15 @@ function getSubmittedWork(userEmail) {
 function getTeacherAssignments() {
   var ss = getDb_();
   var counts = {};
+  var evaluated = {};
   ss.getSheetByName('Submissions').getDataRange().getValues().slice(1).forEach(function (r) {
     if (r[3] === 'Submitted') counts[r[1]] = (counts[r[1]] || 0) + 1;
+    if (Number(r[6]) > 0) evaluated[r[1]] = (evaluated[r[1]] || 0) + 1;
   });
   return ss.getSheetByName('Assignments').getDataRange().getValues().slice(1)
     .filter(function (r) { return r[0]; })
     .map(function (r) {
-      return { id: r[0], title: r[1], description: r[2], createdDate: dtStr_(r[3]), createdBy: r[4], assignedTo: r[5], submittedCount: counts[r[0]] || 0 };
+      return { id: r[0], title: r[1], description: r[2], createdDate: dtStr_(r[3]), createdBy: r[4], assignedTo: r[5], submittedCount: counts[r[0]] || 0, evaluatedCount: evaluated[r[0]] || 0 };
     });
 }
 
