@@ -398,10 +398,13 @@
             <button class="tool-btn" data-tool="eraser" title="Eraser">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21h13"/><path d="M4.5 13.5l7-7a2 2 0 0 1 2.8 0l4.2 4.2a2 2 0 0 1 0 2.8L13.3 19H7z"/></svg>
             </button>
-            <button class="tool-btn" data-tool="select" title="Select">
+            <button class="tool-btn" data-tool="select" title="Select / Move / Resize">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l6.5 14 2-5 5-2z"/><path d="M14 17l3 4"/></svg>
             </button>
           </div>
+          <button class="wb-btn" id="wb-delete" title="Delete selected">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+          </button>
           <label class="color-wrap">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a5 5 0 0 0 0 10 3 3 0 0 1 0 6"/><circle cx="7.5" cy="10" r="1"/><circle cx="12" cy="8" r="1"/><circle cx="16.5" cy="10" r="1"/></svg>
             <input type="color" id="wb-color" value="#1a1a1a" title="Color">
@@ -471,6 +474,11 @@
       var undoStack = [];
       var redoStack = [];
       var suppressGuide = false;
+      var selected = [];
+      var selBox = null;
+      var gStart = null;
+      var marquee = null;
+      var selStart = null;
 
       function $(id) { return document.getElementById(id); }
       function show(id) { $(id).classList.remove('hidden'); }
@@ -895,8 +903,15 @@
             tools.forEach(function (x) { x.classList.remove('active'); });
             b.classList.add('active');
             tool = b.getAttribute('data-tool');
-            if (tool === 'select') setStatus('Tap a stroke to delete it.', 'info');
-            else setStatus('');
+            if (tool === 'select') {
+              setStatus('Drag to select strokes; then move or scale them.', 'info');
+            } else {
+              setStatus('');
+              selected = [];
+              marquee = null;
+              selBox = null;
+              redraw();
+            }
           };
         });
         $('wb-color').onchange = function () { color = this.value; };
@@ -906,6 +921,7 @@
         $('wb-back').onclick = function () { location.hash = '#/student'; };
         $('wb-undo').onclick = undo;
         $('wb-redo').onclick = redo;
+        $('wb-delete').onclick = deleteSelected;
         $('wb-submit').onclick = submitCanvas;
         $('wb-confirm-cancel').onclick = function () { hide('wb-confirm'); };
         $('wb-confirm-ok').onclick = function () { hide('wb-confirm'); doSubmitCanvas(); };
@@ -977,12 +993,15 @@
         if (strokes.length) commitHistory();
         strokes = [];
         currentStroke = null;
+        selected = [];
+        marquee = null;
+        selBox = null;
         redraw();
       }
 
       function cloneStrokes(list) {
         return list.map(function (s) {
-          return { tool: s.tool, color: s.color, points: s.points.slice() };
+          return { tool: s.tool, color: s.color, width: s.width || 1, points: s.points.map(function (pt) { return { x: pt.x, y: pt.y }; }) };
         });
       }
 
@@ -1012,6 +1031,7 @@
       function updateHistoryButtons() {
         $('wb-undo').disabled = !undoStack.length;
         $('wb-redo').disabled = !redoStack.length;
+        $('wb-delete').disabled = !selected.length;
       }
 
       function distToSegment(px, py, a, b) {
@@ -1022,7 +1042,7 @@
         return Math.hypot(px - a.x - t * dx, py - a.y - t * dy);
       }
 
-      function selectStrokeAt(p) {
+      function hitStroke(p) {
         var pp = toCanvas(p);
         var tol = 6 / viewZoom;
         for (var i = strokes.length - 1; i >= 0; i--) {
@@ -1039,15 +1059,150 @@
               if (d < best) best = d;
             }
           }
-          if (best <= rad + tol) {
-            strokes.splice(i, 1);
-            commitHistory();
-            redraw();
-            setStatus('Stroke deleted.', 'ok');
-            return;
-          }
+          if (best <= rad + tol) return i;
         }
-        setStatus('No stroke found there.', 'info');
+        return -1;
+      }
+
+      function computeSelBox() {
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        selected.forEach(function (i) {
+          var s = strokes[i];
+          s.points.forEach(function (pt) {
+            if (pt.x < minX) minX = pt.x;
+            if (pt.y < minY) minY = pt.y;
+            if (pt.x > maxX) maxX = pt.x;
+            if (pt.y > maxY) maxY = pt.y;
+          });
+        });
+        if (minX === Infinity) { selBox = null; return; }
+        selBox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+      }
+
+      function selBoxScreen() {
+        if (!selBox) return null;
+        var pad = 8;
+        return {
+          x: selBox.x * viewZoom + viewPanX - pad,
+          y: selBox.y * viewZoom + viewPanY - pad,
+          w: selBox.w * viewZoom + pad * 2,
+          h: selBox.h * viewZoom + pad * 2
+        };
+      }
+
+      function hitHandle(p) {
+        var b = selBoxScreen();
+        if (!b) return false;
+        var half = 7;
+        var corners = [
+          { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
+          { x: b.x, y: b.y + b.h }, { x: b.x + b.w, y: b.y + b.h }
+        ];
+        for (var i = 0; i < corners.length; i++) {
+          if (Math.abs(p.x - corners[i].x) <= half && Math.abs(p.y - corners[i].y) <= half) return true;
+        }
+        return false;
+      }
+
+      function deleteSelected() {
+        if (!selected.length) return;
+        var set = {};
+        selected.forEach(function (i) { set[i] = true; });
+        strokes = strokes.filter(function (s, i) { return !set[i]; });
+        selected = [];
+        marquee = null;
+        selBox = null;
+        commitHistory();
+        redraw();
+      }
+
+      function selectInMarquee(box) {
+        var x0 = Math.min(box.x0, box.x1), y0 = Math.min(box.y0, box.y1);
+        var x1 = Math.max(box.x0, box.x1), y1 = Math.max(box.y0, box.y1);
+        if (x1 - x0 < 3 && y1 - y0 < 3) { selected = []; return; }
+        var hits = [];
+        strokes.forEach(function (s, i) {
+          for (var j = 0; j < s.points.length; j++) {
+            var q = s.points[j];
+            var sx = q.x * viewZoom + viewPanX;
+            var sy = q.y * viewZoom + viewPanY;
+            if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) { hits.push(i); break; }
+          }
+        });
+        selected = hits;
+      }
+
+      function startSelectGesture(p) {
+        if (selBox && hitHandle(p)) {
+          var cx = selBox.x + selBox.w / 2, cy = selBox.y + selBox.h / 2;
+          gesture = 'scale';
+          gStart = {
+            p: { x: p.x, y: p.y },
+            center: { x: cx, y: cy },
+            orig: selected.map(function (i) {
+              return { w: strokes[i].width || 1, pts: strokes[i].points.map(function (pt) { return { x: pt.x, y: pt.y }; }) };
+            })
+          };
+          return;
+        }
+        var idx = hitStroke(p);
+        if (idx >= 0) {
+          if (selected.indexOf(idx) === -1) { selected = [idx]; redraw(); }
+          gesture = 'move';
+          gStart = { p: { x: p.x, y: p.y }, moved: false };
+          return;
+        }
+        selected = [];
+        gesture = 'marquee';
+        marquee = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        redraw();
+      }
+
+      function moveSelectGesture(p) {
+        if (gesture === 'marquee') {
+          marquee.x1 = p.x;
+          marquee.y1 = p.y;
+          redraw();
+        } else if (gesture === 'move') {
+          var dx = (p.x - gStart.p.x) / viewZoom;
+          var dy = (p.y - gStart.p.y) / viewZoom;
+          if (dx || dy) gStart.moved = true;
+          selected.forEach(function (i) {
+            strokes[i].points.forEach(function (pt) { pt.x += dx; pt.y += dy; });
+          });
+          gStart.p = { x: p.x, y: p.y };
+          redraw();
+        } else if (gesture === 'scale') {
+          var cx = gStart.center.x, cy = gStart.center.y;
+          var scx = cx * viewZoom + viewPanX;
+          var scy = cy * viewZoom + viewPanY;
+          var d0 = Math.max(1, Math.hypot(gStart.p.x - scx, gStart.p.y - scy));
+          var d1 = Math.max(1, Math.hypot(p.x - scx, p.y - scy));
+          var f = Math.max(0.1, Math.min(10, d1 / d0));
+          gStart.orig.forEach(function (o, k) {
+            var s = strokes[selected[k]];
+            s.points.forEach(function (pt, j) {
+              pt.x = cx + (o.pts[j].x - cx) * f;
+              pt.y = cy + (o.pts[j].y - cy) * f;
+            });
+          });
+          redraw();
+        }
+      }
+
+      function endSelectGesture() {
+        if (gesture === 'marquee') {
+          if (marquee) selectInMarquee(marquee);
+          marquee = null;
+          redraw();
+        } else if (gesture === 'move' && gStart && gStart.moved) {
+          commitHistory();
+        } else if (gesture === 'scale') {
+          commitHistory();
+        }
+        gesture = '';
+        gStart = null;
+        updateHistoryButtons();
       }
 
       function redraw() {
@@ -1060,6 +1215,7 @@
         ctx.lineJoin = 'round';
         ctx.globalCompositeOperation = 'source-over';
         applyView();
+        if (selected.length) computeSelBox(); else selBox = null;
         strokes.forEach(drawStrokePath);
         drawGuide();
       }
@@ -1076,6 +1232,35 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(viewPanX + 6, viewPanY + 6, w * viewZoom - 12, h * viewZoom - 12);
         ctx.setLineDash([]);
+
+        if (marquee) {
+          ctx.setLineDash([8, 6]);
+          ctx.strokeStyle = 'rgba(26, 115, 232, 0.9)';
+          ctx.lineWidth = 1.5;
+          ctx.fillStyle = 'rgba(26, 115, 232, 0.12)';
+          var mx0 = Math.min(marquee.x0, marquee.x1), my0 = Math.min(marquee.y0, marquee.y1);
+          var mx1 = Math.max(marquee.x0, marquee.x1), my1 = Math.max(marquee.y0, marquee.y1);
+          ctx.fillRect(mx0, my0, mx1 - mx0, my1 - my0);
+          ctx.strokeRect(mx0, my0, mx1 - mx0, my1 - my0);
+          ctx.setLineDash([]);
+        }
+
+        if (selBox) {
+          var b = selBoxScreen();
+          ctx.strokeStyle = 'rgba(26, 115, 232, 0.9)';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(b.x, b.y, b.w, b.h);
+          ctx.fillStyle = '#1a73e8';
+          var hs = 14;
+          var corners = [
+            { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
+            { x: b.x, y: b.y + b.h }, { x: b.x + b.w, y: b.y + b.h }
+          ];
+          for (var i = 0; i < corners.length; i++) {
+            ctx.fillRect(corners[i].x - hs / 2, corners[i].y - hs / 2, hs, hs);
+          }
+        }
+
         applyView();
       }
 
@@ -1083,15 +1268,16 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.globalCompositeOperation = 'source-over';
+        var wf = Math.max(0.1, s.width || 1);
         if (s.tool === 'eraser') {
           ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 26;
+          ctx.lineWidth = 26 * wf;
         } else if (s.tool === 'marker') {
           ctx.strokeStyle = s.color;
-          ctx.lineWidth = 10 / viewZoom;
+          ctx.lineWidth = 10 * wf / viewZoom;
         } else {
           ctx.strokeStyle = s.color;
-          ctx.lineWidth = 3 / viewZoom;
+          ctx.lineWidth = 3 * wf / viewZoom;
         }
       }
 
@@ -1244,7 +1430,7 @@
       function startStroke(e) {
         e.preventDefault();
         if (tool === 'select') {
-          selectStrokeAt(getPos(e));
+          startSelectGesture(getPos(e));
           return;
         }
         drawing = true;
@@ -1257,6 +1443,10 @@
       }
 
       function moveStroke(e) {
+        if (tool === 'select') {
+          if (gesture) { e.preventDefault(); moveSelectGesture(getPos(e)); }
+          return;
+        }
         if (!drawing || !currentStroke) return;
         e.preventDefault();
         var p = toCanvas(getPos(e));
@@ -1282,6 +1472,10 @@
       }
 
       function endStroke(e) {
+        if (tool === 'select') {
+          if (gesture) endSelectGesture();
+          return;
+        }
         if (!drawing) return;
         if (e && e.preventDefault) e.preventDefault();
         drawing = false;
