@@ -1152,6 +1152,12 @@
           gStart = { p: { x: p.x, y: p.y }, moved: false };
           return;
         }
+        var b = selBoxScreen();
+        if (b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+          gesture = 'move';
+          gStart = { p: { x: p.x, y: p.y }, moved: false };
+          return;
+        }
         selected = [];
         gesture = 'marquee';
         marquee = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
