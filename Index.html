@@ -489,6 +489,7 @@
       var currentStroke = null;
       var tool = 'pencil';
       var color = '#1a1a1a';
+      var hlColor = '#ffd54f';
       var hlOpacity = 0.5;
       var viewZoom = 1;
       var viewPanX = 0;
@@ -932,7 +933,16 @@
       }
 
       function storeColor() {
-        try { window.localStorage.setItem('wb_color', color); } catch (err) {}
+        try { window.localStorage.setItem(tool === 'highlighter' ? 'wb_hl_color' : 'wb_color', activeColor()); } catch (err) {}
+      }
+
+      function activeColor() {
+        return tool === 'highlighter' ? hlColor : color;
+      }
+
+      function setActiveColor(c) {
+        if (tool === 'highlighter') { hlColor = c; } else { color = c; }
+        storeColor();
       }
 
       function bindWhiteboardUI() {
@@ -942,6 +952,7 @@
             tools.forEach(function (x) { x.classList.remove('active'); });
             b.classList.add('active');
             tool = b.getAttribute('data-tool');
+            $('wb-color').value = activeColor();
             if (tool === 'highlighter') {
               show('wb-opacity');
             } else {
@@ -958,14 +969,16 @@
             }
           };
         });
-        $('wb-color').onchange = function () { color = this.value; storeColor(); };
-        $('wb-color').oninput = function () { color = this.value; };
+        $('wb-color').onchange = function () { setActiveColor(this.value); };
+        $('wb-color').oninput = function () { if (tool === 'highlighter') { hlColor = this.value; } else { color = this.value; } };
         $('wb-opacity').onchange = function () {
           hlOpacity = Number(this.value);
           try { window.localStorage.setItem('wb_hl_opacity', String(hlOpacity)); } catch (err) {}
         };
         var savedColor = loadStored('wb_color');
         if (savedColor) { color = savedColor; $('wb-color').value = savedColor; }
+        var savedHlColor = loadStored('wb_hl_color');
+        if (savedHlColor) { hlColor = savedHlColor; }
         var savedHlOpacity = loadStored('wb_hl_opacity');
         if (savedHlOpacity) { hlOpacity = Number(savedHlOpacity); $('wb-opacity').value = String(hlOpacity); }
         $('wb-clear').onclick = function () { clearCanvas(); };
@@ -1502,7 +1515,7 @@
           ctx.lineWidth = 10 / viewZoom;
         } else if (tool === 'highlighter') {
           ctx.globalAlpha = hlOpacity;
-          ctx.strokeStyle = color;
+          ctx.strokeStyle = hlColor;
           ctx.lineWidth = 10 / viewZoom;
         } else {
           ctx.globalAlpha = 1;
@@ -1519,7 +1532,7 @@
         }
         drawing = true;
         var p = toCanvas(getPos(e));
-        currentStroke = { tool: tool, color: color, opacity: tool === 'highlighter' ? hlOpacity : 1, points: [p] };
+        currentStroke = { tool: tool, color: tool === 'highlighter' ? hlColor : color, opacity: tool === 'highlighter' ? hlOpacity : 1, points: [p] };
         strokes.push(currentStroke);
         applyStyle();
         ctx.beginPath();
