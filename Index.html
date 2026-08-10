@@ -421,6 +421,9 @@
             <button class="tool-btn" data-tool="eraser" title="Eraser">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21h13"/><path d="M4.5 13.5l7-7a2 2 0 0 1 2.8 0l4.2 4.2a2 2 0 0 1 0 2.8L13.3 19H7z"/></svg>
             </button>
+            <button class="tool-btn" data-tool="pointer" title="Pointer (laser)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l6 15 2-5 5-2z"/><path d="M12 12l5 5"/></svg>
+            </button>
             <button class="tool-btn" data-tool="select" title="Select / Move / Resize">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l6.5 14 2-5 5-2z"/><path d="M14 17l3 4"/></svg>
             </button>
@@ -504,6 +507,7 @@
       var gStart = null;
       var marquee = null;
       var selStart = null;
+      var pointerPos = null;
 
       function $(id) { return document.getElementById(id); }
       function show(id) { $(id).classList.remove('hidden'); }
@@ -958,13 +962,20 @@
             } else {
               hide('wb-opacity');
             }
-            if (tool === 'select') {
+            if (tool === 'pointer') {
+              setStatus('Hold to show a laser spot — nothing is drawn.', 'info');
+              selected = [];
+              marquee = null;
+              selBox = null;
+              redraw();
+            } else if (tool === 'select') {
               setStatus('Drag to select strokes; then move or scale them.', 'info');
             } else {
               setStatus('');
               selected = [];
               marquee = null;
               selBox = null;
+              pointerPos = null;
               redraw();
             }
           };
@@ -1061,6 +1072,7 @@
         selected = [];
         marquee = null;
         selBox = null;
+        pointerPos = null;
         redraw();
       }
 
@@ -1344,6 +1356,22 @@
           }
         }
 
+        if (pointerPos) {
+          var px = pointerPos.x, py = pointerPos.y;
+          var g = ctx.createRadialGradient(px, py, 1, px, py, 26);
+          g.addColorStop(0, 'rgba(255, 60, 60, 0.85)');
+          g.addColorStop(0.35, 'rgba(255, 60, 60, 0.35)');
+          g.addColorStop(1, 'rgba(255, 60, 60, 0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(px, py, 26, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255, 40, 40, 0.95)';
+          ctx.beginPath();
+          ctx.arc(px, py, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         applyView();
       }
 
@@ -1444,6 +1472,7 @@
           e.preventDefault();
           drawing = false;
           currentStroke = null;
+          pointerPos = null;
           beginPinch(e);
           return;
         }
@@ -1530,6 +1559,12 @@
           startSelectGesture(getPos(e));
           return;
         }
+        if (tool === 'pointer') {
+          drawing = true;
+          pointerPos = getPos(e);
+          scheduleRedraw();
+          return;
+        }
         drawing = true;
         var p = toCanvas(getPos(e));
         currentStroke = { tool: tool, color: tool === 'highlighter' ? hlColor : color, opacity: tool === 'highlighter' ? hlOpacity : 1, points: [p] };
@@ -1542,6 +1577,10 @@
       function moveStroke(e) {
         if (tool === 'select') {
           if (gesture) { e.preventDefault(); moveSelectGesture(getPos(e)); }
+          return;
+        }
+        if (tool === 'pointer') {
+          if (drawing) { pointerPos = getPos(e); scheduleRedraw(); }
           return;
         }
         if (!drawing || !currentStroke) return;
@@ -1575,6 +1614,12 @@
       function endStroke(e) {
         if (tool === 'select') {
           if (gesture) endSelectGesture();
+          return;
+        }
+        if (tool === 'pointer') {
+          drawing = false;
+          pointerPos = null;
+          scheduleRedraw();
           return;
         }
         if (!drawing) return;
