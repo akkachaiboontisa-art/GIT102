@@ -353,13 +353,15 @@
           <div class="modal-box">
             <div class="modal-head">
               <h3 id="sm-title">Submissions</h3>
-              <button id="sm-close" class="btn">Close</button>
             </div>
             <div id="sm-desc" class="a-desc hidden"></div>
             <div id="sm-body"></div>
             <div class="modal-foot">
               <span id="sm-score-msg" class="msg" style="margin-top:0;"></span>
-              <button id="sm-update" class="btn">Update Score</button>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button id="sm-close" class="btn">Close</button>
+                <button id="sm-update" class="btn">Update Score</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1102,7 +1104,7 @@
       function hitHandle(p) {
         var b = selBoxScreen();
         if (!b) return false;
-        var half = 7;
+        var half = 15;
         var corners = [
           { x: b.x, y: b.y }, { x: b.x + b.w, y: b.y },
           { x: b.x, y: b.y + b.h }, { x: b.x + b.w, y: b.y + b.h }
